@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>經典俄羅斯方塊</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --panel-color: #16213e;
+            --text-color: #e94560;
+            --grid-bg: #0f3460;
+            --border-color: #e94560;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .game-container {
+            display: flex;
+            background: var(--panel-color);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 2px solid var(--border-color);
+            gap: 20px;
+        }
+
+        .main-board {
+            position: relative;
+            background: var(--grid-bg);
+            border: 2px solid #fff;
+            border-radius: 5px;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            width: 150px;
+        }
+
+        .info-box {
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #4ecca3;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .info-box h3 {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+            color: #4ecca3;
+            text-transform: uppercase;
+        }
+
+        .info-box span, .info-box div {
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .next-canvas-container {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto;
+            background: #0f3460;
+            border: 1px solid #fff;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .btn {
+            background-color: var(--text-color);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            text-transform: uppercase;
+            margin-top: 5px;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background-color: #ff6b81;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .controls-hint {
+            font-size: 11px;
+            color: #a4b0be;
+            line-height: 1.4;
+            margin-top: 10px;
+            background: rgba(0,0,0,0.2);
+            padding: 8px;
+            border-radius: 5px;
+        }
+
+        .game-over-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            display: none;
+            z-index: 10;
+        }
+
+        .game-over-overlay h2 {
+            color: var(--text-color);
+            font-size: 28px;
+            margin: 0 0 15px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-container">
+        <!-- 遊戲主畫面 -->
+        <div class="main-board">
+            <canvas id="tetris" width="300" height="600"></canvas>
+            <div id="gameOverOverlay" class="game-over-overlay">
+                <h2>遊戲結束</h2>
+                <button class="btn" onclick="resetGame()">再玩一次</button>
+            </div>
+        </div>
+
+        <!-- 側邊資訊面板 -->
+        <div class="side-panel">
+            <div>
+                <div class="info-box">
+                    <h3>得分</h3>
+                    <span id="score">0</span>
+                </div>
+                <div class="info-box">
+                    <h3>消除行數</h3>
+                    <span id="lines">0</span>
+                </div>
+                <div class="info-box">
+                    <h3>等級</h3>
+                    <span id="level">1</span>
+                </div>
+                <div class="info-box">
+                    <h3>下一個</h3>
+                    <div class="next-canvas-container">
+                        <canvas id="nextPiece" width="80" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <button id="startBtn" class="btn" onclick="startGame()">開始遊戲</button>
+                <div class="controls-hint">
+                    <b>控制說明：</b><br>
+                    ← / → : 左右移動<br>
+                    ↑ : 旋轉<br>
+                    ↓ : 加速下落<br>
+                    空白鍵 : 直接墜落
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+        const nextCanvas = document.getElementById('nextPiece');
+        const nextContext = nextCanvas.getContext('2d');
+
+        const BLOCK_SIZE = 30;
+        const ROWS = 20;
+        const COLS = 10;
+
+        context.scale(BLOCK_SIZE, BLOCK_SIZE);
+        nextContext.scale(20, 20);
+
+        const COLORS = [
+            null,
+            '#FF0D72', // I
+            '#0DC2FF', // J
+            '#0DFF72', // L
+            '#F538FF', // O
+            '#FF8E0D', // S
+            '#FFE138', // T
+            '#3877FF'  // Z
+        ];
+
+        const SHAPES = [
+            null,
+            [[0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0]], // I
+            [[2, 0, 0], [2, 2, 2], [0, 0, 0]],                         // J
+            [[0, 0, 3], [3, 3, 3], [0, 0, 0]],                         // L
+            [[4, 4], [4, 4]],                                          // O
+            [[0, 5, 5], [5, 5, 0], [0, 0, 0]],                         // S
+            [[0, 6, 0], [6, 6, 6], [0, 0, 0]],                         // T
+            [[7, 7, 0], [0, 7, 7], [0, 0, 0]]                          // Z
+        ];
+
+        function createMatrix(w, h) {
+            const matrix = [];
+            while (h--) {
+                matrix.push(new Array(w).fill(0));
+            }
+            return matrix;
+        }
+
+        const arena = createMatrix(COLS, ROWS);
+
+        const player = {
+            pos: { x: 0, y: 0 },
+            matrix: null,
+            score: 0,
+            lines: 0,
+            level: 1,
+            type: 0
+        };
+
+        let nextPieceType = 1;
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+        let isPlaying = false;
+
+        function createPiece(type) {
+            return SHAPES[type];
+        }
+
+        function collide(arena, player) {
+            const m = player.matrix;
+            const o = player.pos;
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 &&
+                       (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function merge(arena, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        arena[y + player.pos.y][x + player.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function arenaSweep() {
+            let rowCount = 0;
+            outer: for (let y = arena.length - 1; y > 0; --y) {
+                for (let x = 0; x < arena[y].length; ++x) {
+                    if (arena[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+                const row = arena.splice(y, 1)[0].fill(0);
+                arena.unshift(row);
+                ++y;
+                rowCount++;
+            }
+
+            if (rowCount > 0) {
+                const baseScores = [0, 40, 100, 300, 1200];
+                player.score += baseScores[rowCount] * player.level;
+                player.lines += rowCount;
+                player.level = Math.floor(player.lines / 10) + 1;
+                dropInterval = Math.max(100, 1000 - (player.level - 1) * 90);
+                updateScore();
+            }
+        }
+
+        function rotate(matrix, dir) {
+            const len = matrix.length;
+            for (let y = 0; y < len; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            if (dir > 0) {
+                matrix.forEach(row => row.reverse());
+            } else {
+                matrix.reverse();
+            }
+        }
+
+        function playerRotate(dir) {
+            const posX = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, dir);
+            while (collide(arena, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -dir);
+                    player.pos.x = posX;
+                    return;
+                }
+            }
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(arena, player)) {
+                player.pos.y--;
+                merge(arena, player);
+                playerReset();
+                arenaSweep();
+                updateScore();
+            }
+            dropCounter = 0;
+        }
+
+        function playerHardDrop() {
+            while (!collide(arena, player)) {
+                player.pos.y++;
+            }
+            player.pos.y--;
+            merge(arena, player);
+            playerReset();
+            arenaSweep();
+            updateScore();
+            dropCounter = 0;
+        }
+
+        function playerMove(dir) {
+            player.pos.x += dir;
+            if (collide(arena, player)) {
+                player.pos.x -= dir;
+            }
+        }
+
+        function playerReset() {
+            player.type = nextPieceType;
+            player.matrix = createPiece(player.type);
+            nextPieceType = Math.floor(Math.random() * 7) + 1;
+            
+            player.pos.y = 0;
+            player.pos.x = Math.floor((COLS - player.matrix[0].length) / 2);
+
+            if (collide(arena, player)) {
+                isPlaying = false;
+                document.getElementById('gameOverOverlay').style.display = 'flex';
+            }
+            drawNextPiece();
+        }
+
+        function drawMatrix(matrix, offset, ctx = context) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        ctx.fillStyle = COLORS[value];
+                        ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
+                        ctx.lineWidth = 0.05;
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.strokeRect(x + offset.x, y + offset.y, 1, 1);
+                    }
+                });
+            });
+        }
+
+        function drawNextPiece() {
+            nextContext.fillStyle = '#0f3460';
+            nextContext.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+            const matrix = createPiece(nextPieceType);
+            const offsetX = (4 - matrix[0].length) / 2;
+            const offsetY = (4 - matrix.length) / 2;
+            drawMatrix(matrix, { x: offsetX, y: offsetY }, nextContext);
+        }
+
+        function draw() {
+            context.fillStyle = '#0f3460';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            drawMatrix(arena, { x: 0, y: 0 });
+            drawMatrix(player.matrix, player.pos);
+        }
+
+        function update(time = 0) {
+            if (!isPlaying) return;
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            dropCounter += deltaTime;
+
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function updateScore() {
+            document.getElementById('score').innerText = player.score;
+            document.getElementById('lines').innerText = player.lines;
+            document.getElementById('level').innerText = player.level;
+        }
+
+        document.addEventListener('keydown', event => {
+            if (!isPlaying) return;
+            if (event.key === 'ArrowLeft') playerMove(-1);
+            else if (event.key === 'ArrowRight') playerMove(1);
+            else if (event.key === 'ArrowDown') playerDrop();
+            else if (event.key === 'ArrowUp') playerRotate(1);
+            else if (event.key === ' ') {
+                event.preventDefault();
+                playerHardDrop();
+            }
+        });
+
+        function startGame() {
+            arena.forEach(row => row.fill(0));
+            player.score = 0;
+            player.lines = 0;
+            player.level = 1;
+            dropInterval = 1000;
+            updateScore();
+
+            document.getElementById('gameOverOverlay').style.display = 'none';
+            document.getElementById('startBtn').innerText = '重新開始';
+
+            nextPieceType = Math.floor(Math.random() * 7) + 1;
+            playerReset();
+            
+            if (!isPlaying) {
+                isPlaying = true;
+                lastTime = performance.now();
+                update();
+            }
+        }
+
+        function resetGame() {
+            startGame();
+        }
+
+        drawMatrix(arena, { x: 0, y: 0 });
+        drawNextPiece();
+    </script>
+</body>
+</html>
